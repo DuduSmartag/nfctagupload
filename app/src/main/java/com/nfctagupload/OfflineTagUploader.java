@@ -1,5 +1,6 @@
 package com.nfctagupload;
 
+import android.os.Build;
 import android.util.Log;
 
 import com.modules.OfflineTag;
@@ -76,12 +77,12 @@ public class OfflineTagUploader {
         fd.createNewFile();
 
         Date currentTime = Calendar.getInstance().getTime();
-        SimpleDateFormat postFormat = new SimpleDateFormat("dd/MM/yyyy HH:mm:ss", Locale.getDefault());
-        String dateStr = postFormat.format(currentTime);
+        //SimpleDateFormat postFormat = new SimpleDateFormat("dd/MM/yyyy HH:mm:ss", Locale.getDefault());
+        //String dateStr = postFormat.format(currentTime);
 
         JSONObject newObj = new JSONObject();
         newObj.put("tagID",tagID);
-        newObj.put("timeStamp",dateStr);
+        newObj.put("timeStamp",currentTime);
         newObj.put("terminalUid",terminalUid);
         offlineQueue.put(newObj);
 
@@ -127,8 +128,32 @@ public class OfflineTagUploader {
     public synchronized void removeFromQueue(int index)
     throws Exception {
         Log.d(TAG,"removeFromQueue: "+String.valueOf(index));
-        queue.remove(index);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
+            queue.remove(index);
+        }else{
+            final List<JSONObject> objs = asList(queue);
+            objs.remove(index);
+
+            final JSONArray ja = new JSONArray();
+            for (final JSONObject obj : objs) {
+                ja.put(obj);
+            }
+
+            queue = ja;
+        }
         writeFile();
+    }
+
+    public static List<JSONObject> asList(final JSONArray ja) {
+        final int len = ja.length();
+        final ArrayList<JSONObject> result = new ArrayList<JSONObject>(len);
+        for (int i = 0; i < len; i++) {
+            final JSONObject obj = ja.optJSONObject(i);
+            if (obj != null) {
+                result.add(obj);
+            }
+        }
+        return result;
     }
 
     public synchronized boolean hasInQueue(String tg) {

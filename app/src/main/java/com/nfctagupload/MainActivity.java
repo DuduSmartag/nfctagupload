@@ -248,10 +248,10 @@ public class MainActivity extends CommonActivity {
         adapter.enableForegroundDispatch(activity, pendingIntent, filters, techList);
     }
 
-    /**
-     * @param activity The corresponding {@link BaseActivity} requesting to stop the foreground dispatch.
-     * @param adapter The {@link NfcAdapter} used for the foreground dispatch.
-     */
+//    /**
+//     * @param activity The corresponding {@link BaseActivity} requesting to stop the foreground dispatch.
+//     * @param adapter The {@link NfcAdapter} used for the foreground dispatch.
+//     */
     public static void stopForegroundDispatch(final Activity activity, NfcAdapter adapter) {
         try {
             adapter.disableForegroundDispatch(activity);
