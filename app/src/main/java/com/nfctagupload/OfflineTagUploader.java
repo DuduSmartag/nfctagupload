@@ -25,10 +25,12 @@ import java.util.Locale;
 public class OfflineTagUploader {
     private static final String TAG=OfflineTagUploader.class.getName();
     private static final String fileName="offline_tags.txt";
-    private static final String tagsToSendFileName="tags_scanned_offline.txt";
+    private static final String tagsToSendFileName="tags_scanned_offline_nightrun.txt";
+    private static final String fileNameNightRun="nightrun_vip.txt";
 
     public volatile JSONArray queue=new JSONArray();
     public volatile JSONArray offlineQueue=new JSONArray();
+    public volatile JSONArray nightRunQueue=new JSONArray();
     //private ArrayList<OfflineTag> mOfflineTags = new ArrayList<>();
 
     public OfflineTagUploader(){
@@ -51,6 +53,23 @@ public class OfflineTagUploader {
         return obj;
     }
 
+    private synchronized JSONObject readNightRunFile()
+            throws Exception {
+        Log.d(TAG,"readNightRunFile");
+        JSONObject jobj=new JSONObject();
+        File fd=new File(AppCache.getAppDirectoryPath(),fileNameNightRun);
+        Log.d(TAG,"Night Run file: "+fd.getPath());
+        if (!fd.exists()){
+            return jobj;
+            //throw new Exception("File not found: "+fd.getPath());
+        }
+        byte[] buff= RameezFileReader.readFile(fd);
+        String str=new String(buff,0,buff.length);
+        Log.d(TAG,"Night Run Read json: "+str);
+        JSONObject obj=new JSONObject(str);
+        return obj;
+    }
+
     private synchronized void writeFile()
     throws Exception {
         Log.d(TAG,"writeFile");
@@ -67,7 +86,7 @@ public class OfflineTagUploader {
         RameezFileWriter.writeFile(fd,str.getBytes());
     }
 
-    public synchronized void writeTempFile(String terminalUid, String tagID) throws Exception {
+    public synchronized void writeTempNightRunFile(String terminalUid, String tagID) throws Exception {
         Log.d(TAG,"writeTempFile");
         File fd=new File(AppCache.getAppDirectoryPath(),tagsToSendFileName);
         Log.d(TAG,"Config temp file: "+fd.getPath());
@@ -94,7 +113,7 @@ public class OfflineTagUploader {
         RameezFileWriter.writeFile(fd,str.getBytes());
     }
 
-    public JSONArray returnTempTags(){
+    public JSONArray returnTempNightRunTags(){
         return offlineQueue;
     }
 
@@ -178,5 +197,15 @@ public class OfflineTagUploader {
             queue=jobj.getJSONArray("tags");
         }
         started=true;
+    }
+
+    public JSONArray startNightRunUploader()
+            throws Exception {
+        JSONObject jobj=readNightRunFile();
+        if (jobj.has("tags")){
+            nightRunQueue=jobj.getJSONArray("tags");
+        }
+        started=true;
+        return nightRunQueue;
     }
 }

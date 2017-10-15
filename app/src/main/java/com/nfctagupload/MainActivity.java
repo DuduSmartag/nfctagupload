@@ -62,7 +62,9 @@ public class MainActivity extends CommonActivity {
     private ImageView imageView;
     private SettingModule mSettingModule;
 
-    private Target target;
+//    private Target target;
+
+    private JSONArray mNightRunTags;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -70,7 +72,8 @@ public class MainActivity extends CommonActivity {
         setContentView(R.layout.activity_main);
 
         findViews();
-        getSettingFromServer();
+        //getSettingFromServer();
+        getNightRunOfflineFile();
 
         if (!PermissionsHelper.checkAndRequestPermissions(this)){
             canDoAfterPermissions();
@@ -138,12 +141,13 @@ public class MainActivity extends CommonActivity {
     private void startOfflineThread(){
         Thread thr=new Thread(){
             public void run(){
+                Date currentTime = Calendar.getInstance().getTime();
                 while(offlineUploader.started) {
                     for (int a=0;a<offlineUploader.queue.length();a++) {
                         try {
                             String nextTag=offlineUploader.queue.getString(a);
                             Log.d(TAG,"next tag: "+nextTag);
-                            String bd=NfcTagServer.sendTagToApi(terminalUid,nextTag,AppCache.config);
+                            String bd=NfcTagServer.sendTagToApi(terminalUid,nextTag,AppCache.config, String.valueOf(currentTime));
                             Log.d(TAG,"Next tag uploaded: "+bd);
                             if (bd.compareTo("")!=0){
                                 offlineUploader.removeFromQueue(a);
@@ -277,11 +281,12 @@ public class MainActivity extends CommonActivity {
                         if ((terminalUid == null) || (terminalUid.equalsIgnoreCase(""))){
                             terminalUid = getMacAddress();
                         }
-                        checkIfNeedToSendTempFile(offlineUploader.returnTempTags());
-                        bd=NfcTagServer.sendTagToApi(terminalUid,str,AppCache.config);
+//                        checkIfNeedToSendTempFile(offlineUploader.returnTempTags());
+                        Date currentTime = Calendar.getInstance().getTime();
+                        bd=NfcTagServer.sendTagToApi(terminalUid,str,AppCache.config, String.valueOf(currentTime));
                     }else{
                         try {
-                            offlineUploader.writeTempFile(terminalUid,str);
+//                            offlineUploader.writeTempFile(terminalUid,str);
                             bd = "successfully";
                         }catch (Exception e){
                             bd = "Offline and could not write to local file";
@@ -335,6 +340,123 @@ public class MainActivity extends CommonActivity {
         thr.start();
     }
 
+    private void sendNightRunTagToServer(final String tag){
+        Thread thr=new Thread(){
+            public void run(){
+                showProgressBar();
+                try{
+                    //String bd=NfcTagServer.sendTagToApi("A434D9474A9B",str,AppCache.config);
+                    ConnectivityManager connManager = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
+                    NetworkInfo activeNetwork  = connManager.getActiveNetworkInfo();
+                    String bd;
+
+                    if (activeNetwork != null && activeNetwork.getType() == ConnectivityManager.TYPE_WIFI && activeNetwork.isConnected()) {
+                        if ((terminalUid == null) || (terminalUid.equalsIgnoreCase(""))){
+                            terminalUid = getMacAddress();
+                        }
+                        checkIfNeedToSendTempFile(offlineUploader.returnTempNightRunTags());
+//                        if (!offlineTags.equalsIgnoreCase("")){
+//                            String offlineResult = NfcTagServer.sendTagToApi(terminalUid,offlineTags,AppCache.config);
+//                            Log.d(TAG,"Offline Response: "+offlineResult);
+//                        }
+                        Date currentTime = Calendar.getInstance().getTime();
+                        bd=NfcTagServer.sendTagToApi(terminalUid,tag,AppCache.config, String.valueOf(currentTime));
+                    }else{
+                        try {
+                            offlineUploader.writeTempNightRunFile(terminalUid,tag);
+                            bd = "successfully";
+                        }catch (Exception e){
+                            bd = "Offline and could not write to local file";
+                        }
+                    }
+
+                    Log.d(TAG,"Response: "+bd);
+                    if (bd.contains("successfully") ){
+//                        intentStatus.putExtra("body",bd);
+//                        intentStatus.putExtra("status",true);
+                    }
+                    else{
+//                        intentStatus.putExtra("body",bd);
+//                        intentStatus.putExtra("status",false);
+                    }
+                    closeProgressBar();
+//                    runOnUiThread(new Runnable(){
+//                        public void run(){
+//                            startActivity(intentStatus);
+//                        }
+//                    });
+                }catch(Exception ex){
+                    processingTag=false;
+                    closeProgressBar();
+                    UIHelper.makeLongToast("Error in sending night run tags to server",MainActivity.this);
+                }
+            }
+        };
+        thr.start();
+    }
+
+    private void getNightRunOfflineFile(){
+        Thread thr=new Thread(){
+            public void run(){
+                showProgressBar();
+                try{
+                    mNightRunTags = offlineUploader.startNightRunUploader();
+
+                    closeProgressBar();
+                }catch(Exception ex){
+                    processingTag=false;
+                    closeProgressBar();
+                    UIHelper.makeLongToast("Error in reading night run file",MainActivity.this);
+                }
+            }
+        };
+        thr.start();
+    }
+
+    private void checkTagNightRun(final String str){
+        Thread thr=new Thread(){
+            public void run(){
+                showProgressBar();
+                try{
+                    boolean flagFound = false;
+
+                    if (mNightRunTags != null){
+                        try {
+                            for (int a = 0; a < mNightRunTags.length(); a++) {
+                                String tag = mNightRunTags.getString(a);
+                                if (str.equalsIgnoreCase(tag)){
+                                    flagFound = true;
+                                }
+                            }
+                        }catch(Exception ex){
+
+                        }
+                    }
+                    intentStatus=new Intent(MainActivity.this,StatusActivity.class);
+                    if (flagFound){
+                        intentStatus.putExtra("body","successfully");
+                        intentStatus.putExtra("status",true);
+                        sendNightRunTagToServer(str);
+                    }else{
+                        intentStatus.putExtra("body","Could not find user data");
+                        intentStatus.putExtra("status",false);
+                    }
+                    closeProgressBar();
+                    runOnUiThread(new Runnable(){
+                        public void run(){
+                            startActivity(intentStatus);
+                        }
+                    });
+                }catch(Exception ex){
+                    processingTag=false;
+                    closeProgressBar();
+                    UIHelper.makeLongToast("Error in finding tag",MainActivity.this);
+                }
+            }
+        };
+        thr.start();
+    }
+
     private void handleIntent(Intent intent) {
         String action = intent.getAction();
         //UIHelper.makeLongToast("on handleIntent",this);
@@ -359,7 +481,8 @@ public class MainActivity extends CommonActivity {
                         str+=String.format("%02x",b);
                     }
                     //UIHelper.makeLongToast("String id is " + str + " ...sending to server", MainActivity.this);
-                    sendTagToServer(str);
+                    //sendTagToServer(str);
+                    checkTagNightRun(str);
                 }
             }
         }catch(Exception ex){
@@ -394,130 +517,155 @@ public class MainActivity extends CommonActivity {
         thr.start();
     }
 
-    private void getSettingFromServer(){
-        String url = "http://echo.jsontest.com/key/value/one/two";
-        JsonObjectRequest jsObjRequest = new JsonObjectRequest
-                (Request.Method.GET, url, null, new Response.Listener<JSONObject>() {
-                    @Override
-                    public void onResponse(JSONObject response) {
-                        Log.d(TAG,"Volley Response: " + response.toString());
-
-                        //test
-                        mSettingModule = new SettingModule("http://i.imgur.com/DvpvklR.png", false);
-
-                        getImageByUrl(mSettingModule.getLogoPath());
-                        if(mSettingModule.getNeedToUpdateNFCFile()){
-                            updateLocalNFCFile();
-                        }
-                    }
-                }, new Response.ErrorListener() {
-                    @Override
-                    public void onErrorResponse(VolleyError error) {
-                        getImageByUrl("");
-                        Log.d(TAG, "Volley Error: " + error.getMessage());
-                    }
-                });
-        MySingleton.getInstance(this).addToRequestQueue(jsObjRequest);
-    }
-
-    private void updateLocalNFCFile(){
-        String url = "http://echo.jsontest.com/key/value/one/two";
-        JsonObjectRequest jsObjRequest = new JsonObjectRequest
-                (Request.Method.GET, url, null, new Response.Listener<JSONObject>() {
-                    @Override
-                    public void onResponse(JSONObject response) {
-                        Log.d(TAG,"Volley Response: " + response.toString());
-                        JSONArray queueFromServer = new JSONArray();
-                        try {
-                            offlineUploader.writeFileFromServer(queueFromServer);
-                        } catch (Exception e) {
-                            e.printStackTrace();
-                        }
-                    }
-                }, new Response.ErrorListener() {
-                    @Override
-                    public void onErrorResponse(VolleyError error) {
-                        // TODO Auto-generated method stub
-                        Log.d(TAG, "Volley Error: " + error.getMessage());
-                    }
-                });
-        MySingleton.getInstance(this).addToRequestQueue(jsObjRequest);
-    }
-
-    private void getImageByUrl(String urlStr){
-        if (urlStr.equalsIgnoreCase("")) {
-            Picasso.with(this).load(R.drawable.confirm).into(imageView);
-
-            File logoFile = new File(AppCache.getAppDirectoryPath()+"logo_image.png");
-            if (logoFile.exists()) {
-                Picasso.with(this).load(logoFile).into(imageView);
-            }
-        }else {
-//            target = new Target() {
-//                @Override
-//                public void onBitmapLoaded(final Bitmap bitmap, Picasso.LoadedFrom from) {
-//                    Thread thread = new Thread(){
-//                        @Override
-//                        public void run() {
-//                            File file = new File(AppCache.getAppDirectoryPath() + "logo_image.png");
-//                            if (file.exists()){
-//                                file.delete();
-//                            }
-//                            try {
-//                                file.createNewFile();
-//                                FileOutputStream ostream = new FileOutputStream(file);
-//                                bitmap.compress(Bitmap.CompressFormat.PNG, 80, ostream);
-//                                ostream.flush();
-//                                ostream.close();
-//                            } catch (IOException e) {
-//                                Log.e("IOException", e.getLocalizedMessage());
-//                            }
+//    private void getSettingFromServer(){
+//        String url = "http://echo.jsontest.com/key/value/one/two";
+//        JsonObjectRequest jsObjRequest = new JsonObjectRequest
+//                (Request.Method.GET, url, null, new Response.Listener<JSONObject>() {
+//                    @Override
+//                    public void onResponse(JSONObject response) {
+//                        Log.d(TAG,"Volley Response: " + response.toString());
+//
+//                        //test
+//                        mSettingModule = new SettingModule("http://i.imgur.com/DvpvklR.png", false);
+//
+//                        getImageByUrl(mSettingModule.getLogoPath());
+//                        if(mSettingModule.getNeedToUpdateNFCFile()){
+//                            updateLocalNFCFile();
 //                        }
-//                    };
-//                    thread.start();
-//                }
-//
-//                @Override
-//                public void onBitmapFailed(Drawable errorDrawable) {
-//
-//                }
-//
-//                @Override
-//                public void onPrepareLoad(Drawable placeHolderDrawable) {
-//
-//                }
-//            };
-//            Picasso.with(this).load(urlStr).into(target);
+//                    }
+//                }, new Response.ErrorListener() {
+//                    @Override
+//                    public void onErrorResponse(VolleyError error) {
+//                        getImageByUrl("");
+//                        Log.d(TAG, "Volley Error: " + error.getMessage());
+//                    }
+//                });
+//        MySingleton.getInstance(this).addToRequestQueue(jsObjRequest);
+//    }
 
-            Picasso.with(this).load(urlStr).into(imageView);
-        }
-    }
+//    private void updateLocalNFCFile(){
+//        String url = "http://echo.jsontest.com/key/value/one/two";
+//        JsonObjectRequest jsObjRequest = new JsonObjectRequest
+//                (Request.Method.GET, url, null, new Response.Listener<JSONObject>() {
+//                    @Override
+//                    public void onResponse(JSONObject response) {
+//                        Log.d(TAG,"Volley Response: " + response.toString());
+//                        JSONArray queueFromServer = new JSONArray();
+//                        try {
+//                            offlineUploader.writeFileFromServer(queueFromServer);
+//                        } catch (Exception e) {
+//                            e.printStackTrace();
+//                        }
+//                    }
+//                }, new Response.ErrorListener() {
+//                    @Override
+//                    public void onErrorResponse(VolleyError error) {
+//                        // TODO Auto-generated method stub
+//                        Log.d(TAG, "Volley Error: " + error.getMessage());
+//                    }
+//                });
+//        MySingleton.getInstance(this).addToRequestQueue(jsObjRequest);
+//    }
+
+//    private void getImageByUrl(String urlStr){
+//        if (urlStr.equalsIgnoreCase("")) {
+//            Picasso.with(this).load(R.drawable.confirm).into(imageView);
+//
+//            File logoFile = new File(AppCache.getAppDirectoryPath()+"logo_image.png");
+//            if (logoFile.exists()) {
+//                Picasso.with(this).load(logoFile).into(imageView);
+//            }
+//        }else {
+////            target = new Target() {
+////                @Override
+////                public void onBitmapLoaded(final Bitmap bitmap, Picasso.LoadedFrom from) {
+////                    Thread thread = new Thread(){
+////                        @Override
+////                        public void run() {
+////                            File file = new File(AppCache.getAppDirectoryPath() + "logo_image.png");
+////                            if (file.exists()){
+////                                file.delete();
+////                            }
+////                            try {
+////                                file.createNewFile();
+////                                FileOutputStream ostream = new FileOutputStream(file);
+////                                bitmap.compress(Bitmap.CompressFormat.PNG, 80, ostream);
+////                                ostream.flush();
+////                                ostream.close();
+////                            } catch (IOException e) {
+////                                Log.e("IOException", e.getLocalizedMessage());
+////                            }
+////                        }
+////                    };
+////                    thread.start();
+////                }
+////
+////                @Override
+////                public void onBitmapFailed(Drawable errorDrawable) {
+////
+////                }
+////
+////                @Override
+////                public void onPrepareLoad(Drawable placeHolderDrawable) {
+////
+////                }
+////            };
+////            Picasso.with(this).load(urlStr).into(target);
+//
+//            Picasso.with(this).load(urlStr).into(imageView);
+//        }
+//    }
 
     private void checkIfNeedToSendTempFile(final JSONArray jsonArray){
-        if ((jsonArray == null) || (jsonArray.length()==0))
-            return;
+        if ((jsonArray == null) || (jsonArray.length()==0) || (jsonArray.toString().equalsIgnoreCase("[]")))
+            return ;
 
-        String url = "";
-        StringRequest stringRequest = new StringRequest(Request.Method.POST, url,
-                new Response.Listener<String>() {
-                    @Override
-                    public void onResponse(String response) {
-                        offlineUploader.clearTempTags();
+        Thread thr=new Thread(){
+            public void run(){
+                showProgressBar();
+                try{
+                    for (int i = 0; i < jsonArray.length(); i++) {
+                        JSONObject offlineTag = jsonArray.getJSONObject(i);
+                        String tag = offlineTag.getString("tagID");
+                        String currentTime = String.valueOf(offlineTag.get("timeStamp"));
+                        String offlineResult = NfcTagServer.sendTagToApi(terminalUid, tag, AppCache.config, currentTime);
+                        Log.d(TAG,"Response from offline tags: " + offlineResult);
                     }
-                }, new Response.ErrorListener() {
-            @Override
-            public void onErrorResponse(VolleyError error) {
-                Log.d(TAG, "Volley Error: " + error.getMessage());
-            }
-        }){
-            @Override
-            public byte[] getBody() throws AuthFailureError {
-                String stringJson = jsonArray.toString();
-                Log.d(TAG, "checkIfNeedToSendTempFile json body: " + stringJson);
-                return stringJson.getBytes();
+                    closeProgressBar();
+//                    runOnUiThread(new Runnable(){
+//                        public void run(){
+//                        }
+//                    });
+                }catch(Exception ex){
+                    processingTag=false;
+                    closeProgressBar();
+//                    UIHelper.makeLongToast("Error in finding tag",MainActivity.this);
+                }
             }
         };
-        MySingleton.getInstance(this).addToRequestQueue(stringRequest);
+        thr.start();
+
+//        String url = "";
+//        StringRequest stringRequest = new StringRequest(Request.Method.POST, url,
+//                new Response.Listener<String>() {
+//                    @Override
+//                    public void onResponse(String response) {
+//                        offlineUploader.clearTempTags();
+//                    }
+//                }, new Response.ErrorListener() {
+//            @Override
+//            public void onErrorResponse(VolleyError error) {
+//                Log.d(TAG, "Volley Error: " + error.getMessage());
+//            }
+//        }){
+//            @Override
+//            public byte[] getBody() throws AuthFailureError {
+//                String stringJson = jsonArray.toString();
+//                Log.d(TAG, "checkIfNeedToSendTempFile json body: " + stringJson);
+//                return stringJson.getBytes();
+//            }
+//        };
+//        MySingleton.getInstance(this).addToRequestQueue(stringRequest);
     }
 
     private String getMacAddress(){
